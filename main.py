@@ -6,12 +6,15 @@ from dotenv import load_dotenv
 # טעינת משתני סביבה מהקובץ .env
 load_dotenv()
 
+
 # אתחול לקוח ה-API של Groq (מושך אוטומטית את GROQ_API_KEY ממשתני הסביבה)
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
+LOG_FILE = "experiments_log.csv"
 # ==========================================
 # כאן נכנס הפרומפט שלך - ישתנה מאיטרציה לאיטרציה
 # ==========================================
+PROMPT_VERSION = "V1" # שומרים את שם הגרסה כדי לדעת איזה פרומפט ייצר את התשובה
 SYSTEM_PROMPT_V1 = """
 You are a CLI expert. Convert the following natural language request into a Windows CMD command.
 
@@ -20,6 +23,24 @@ CRITICAL RULES:
 2. Do NOT add markdown formatting like ``` or quotes.
 3. Do NOT add any explanations or conversational text.
 """
+def log_to_csv(user_input: str, agent_output: str, prompt_version: str) -> None:
+    """
+    Appends the interaction to a local CSV file.
+    Creates the file and headers if it doesn't exist.
+    """
+    file_exists = os.path.isfile(LOG_FILE)
+    
+    # פתיחת הקובץ במצב הוספה (append)
+    with open(LOG_FILE, mode="a", newline="", encoding="utf-8-sig") as file:
+        writer = csv.writer(file)
+        
+        # כתיבת שורת הכותרות אם הקובץ רק נוצר
+        if not file_exists:
+            writer.writerow(["Timestamp", "Prompt Version", "User Input", "Agent Output", "Score: Format", "Score: Syntax", "Notes"])
+            
+        # כתיבת הנתונים של הבקשה הנוכחית
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        writer.writerow([timestamp, prompt_version, user_input, agent_output, "", "", ""])
 
 def generate_cli_command(user_input: str) -> str:
     """
@@ -44,10 +65,14 @@ def generate_cli_command(user_input: str) -> str:
             ]
         )
         # חילוץ הטקסט מהתשובה
-        return response.choices[0].message.content.strip()
+        output =  response.choices[0].message.content.strip()
+        log_to_csv(user_input, output, PROMPT_VERSION)
+        return output
     
     except Exception as e:
-        return f"System Error: {str(e)}"
+        error_msg = f"System Error: {str(e)}"
+        log_to_csv(user_input, error_msg, PROMPT_VERSION) 
+        return error_msg
 
 # בניית ממשק Gradio
 def build_ui():
